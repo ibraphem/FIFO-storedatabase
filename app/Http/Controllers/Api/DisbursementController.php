@@ -7,7 +7,8 @@ use App\Purchase;
 use App\Item;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use DB;
+use DateTime;
 
 class DisbursementController extends Controller
 {
@@ -33,40 +34,42 @@ class DisbursementController extends Controller
      */
     public function test()
     {
-        $purchase_date = Purchase::orderBy('purchase_date', 'DESC')
-        ->where('item_id', '=', 7)
+       $result = Disbursement::with('department:id,dept_name')
+        ->with('item:id,item_name')
+        ->groupBy('department_id', 'item_id')
+        ->selectRaw('item_id, department_id, sum(disbursed_qty * price) as total, sum(disbursed_qty) as quantity')
+        ->where("department_id", '=', 2)
+        ->orderBy('item_id')
         ->where('company', '=', 'Landover')
-        ->first('purchase_date');
+        ->get(); 
 
-        $disbursement_date = Disbursement::orderBy('disbursement_date', 'DESC')
-        ->where('item_id', '=', 7)
+   /*     $result = Disbursement::selectRaw('sum(disbursed_qty * price) as grandTotal')
         ->where('company', '=', 'Landover')
-        ->first('disbursement_date');
-
-        $quantity = Purchase::where('item_id', '=', 7)
-                    ->where('company', '=', 'Landover')
-                    ->sum('supply_qty');
-
-        $purchase = Purchase::orderBy('purchase_date', 'DESC')
-        ->with('supplier:id,supplier_name')
-        ->where('item_id', '=', 7)
-        ->where('company', '=', 'Landover')
-        ->get();
-
-      /*  $disbursement = Disbursement::orderBy('disbursement_date', 'DESC')
-        ->with('department:id,dept_name')
-        ->where('item_id', '=', 7)
-        ->where('company', '=', 'Landover')
+        ->where('disbursement_date', '>=', '2021-02-01')
+        ->where('disbursement_date', '<=', '2021-02-31')
         ->get(); */
 
-        $disbursement = Disbursement::with('department:id,dept_name')
-        ->groupBy('department_id', 'disbursement_id', 'disbursement_date')
-        ->selectRaw('disbursement_id, disbursement_date, department_id, sum(disbursed_qty) as quantity')
-        ->where('item_id', '=', 7)
-        ->orderBy('item_id','DESC')->get(); 
+        return $result;
+     
+    }
 
-        return array( 'purchase_date' => $purchase_date, 'disbursement_date' => $disbursement_date, 'quantity' => $quantity,
-                    'purchase' => $purchase, 'disbursement' => $disbursement);
+    public function spenders($company) 
+    {
+        $month_ini = new DateTime("first day of last month");
+        $month_end = new DateTime("last day of last month");
+   
+           $result = DB::table('disbursements')
+           ->leftJoin('departments', 'disbursements.department_id', '=', 'departments.id')
+                       ->groupBy('dept_name')
+                       ->selectRaw('dept_name, sum(disbursed_qty * price) as price')
+                       ->where('disbursement_date', '>=', $month_ini->format('Y-m-d'))
+                       ->where('disbursement_date', '<=', $month_end->format('Y-m-d'))
+                       ->where('company', '=', $company)
+                       ->orderBy("price", 'DESC')
+                       ->take(5)
+                       ->get(); 
+   
+           return $result;
     }
 
     public function itemDetails($id, $company) {
@@ -116,7 +119,6 @@ class DisbursementController extends Controller
         $disbursement_id = time();
         $disbursement_date = $request->disburseDate;
         $disbursement_items = $request->input('disburseItems');
-        $disbursed_id = Str::random(15);
         $item_check = $request->input('itemCheck');
 
     /*    if (Disbursement::where('disbursement_date', '=', $disbursement_date)
@@ -163,6 +165,7 @@ class DisbursementController extends Controller
             $disburse->disbursed_qty = $disbursement_item->quantity;
             $disburse->department_id = $disbursement_item->dept;
             $disburse->pur_item_id = $first_in->id;
+            $disburse->price = $first_in->purchase_price;
             $disburse->company = $company;
             $disburse->save();
 
@@ -190,12 +193,12 @@ class DisbursementController extends Controller
           
             $disburse = new Disbursement();
             $disburse->disbursement_id = $disbursement_id;
-            $disburse->disbursed_id = $disbursed_id;
             $disburse->disbursement_date = $disbursement_date;
             $disburse->item_id = $disbursement_item->id;
             $disburse->disbursed_qty = $rema;
             $disburse->department_id = $disbursement_item->dept;
             $disburse->pur_item_id = $sec_in->id;
+            $disburse->price = $sec_in->purchase_price;
             $disburse->company = $company;
             
             $qty = $qty - $rema;
@@ -209,13 +212,14 @@ class DisbursementController extends Controller
                   
                     $disburse = new Disbursement();
                     $disburse->disbursement_id = $disbursement_id;
-                    $disburse->disbursed_id = $disbursed_id;
                     $disburse->disbursement_date = $disbursement_date;
                     $disburse->item_id = $disbursement_item->id;
                     $disburse->disbursed_qty = $qty;
                     $disburse->department_id = $disbursement_item->dept;
                     $disburse->pur_item_id = $sec_in->id;
+                    $disburse->price = $sec_in->purchase_price;
                     $disburse->company = $company;
+
                     
                     $qty = 0;
         
@@ -232,6 +236,69 @@ class DisbursementController extends Controller
   
     }
 
+    public function report($company, $year, $month)
+    {
+        $depts = Disbursement::groupBy('department_id')
+        ->where('company', '=', $company)
+        ->where('disbursement_date', '>=', $year . "-" . $month . "-" . "01")
+        ->where('disbursement_date', '<=', $year . "-" . $month . "-" . "31")
+        ->get('department_id');
+
+        $unit = array();
+       for($i = 0; $i < count($depts); $i++) {
+        $unit[] = Disbursement::with('department:id,dept_name')
+        ->with('item:id,item_name')
+        ->groupBy('department_id', 'item_id')
+        ->selectRaw('item_id, department_id, sum(disbursed_qty * price) as total, sum(disbursed_qty) as quantity')
+        ->where("department_id", '=', $depts[$i]->department_id)
+        ->where('company', '=', $company)
+        ->where('disbursement_date', '>=', $year . "-" . $month . "-" . "01")
+        ->where('disbursement_date', '<=', $year . "-" . $month . "-" . "31")
+        ->get();
+       }
+
+       $grandTotal = Disbursement::selectRaw('sum(disbursed_qty * price) as grandTotal')
+        ->where('company', '=', $company)
+        ->where('disbursement_date', '>=', $year . "-" . $month . "-" . "01")
+        ->where('disbursement_date', '<=', $year . "-" . $month . "-" . "31")
+        ->get();
+
+        $result = array('unit' => $unit, 'grandTotal' => $grandTotal);
+
+        return $result;
+    }
+
+
+    public function DisbursementReport($company, $from, $to) {
+        $disbursement = Disbursement::with('department:id,dept_name')
+        ->with('item:id,item_name')
+        ->groupBy('department_id', 'item_id', 'disbursement_date')
+        ->selectRaw('item_id, disbursement_date, department_id, sum(disbursed_qty * price) as total, sum(disbursed_qty) as quantity')
+        ->where('company', '=', $company)
+        ->where('disbursement_date', '>=', $from)
+        ->where('disbursement_date', '<=', $to)
+        ->get();
+        
+
+        return $disbursement;
+    }
+
+    public function itemReport($id, $company, $from, $to) {
+        $disbursement = Disbursement::with('department:id,dept_name')
+        ->with('item:id,item_name')
+        ->groupBy('department_id', 'item_id', 'disbursement_date')
+        ->selectRaw('item_id, disbursement_date, department_id, sum(disbursed_qty * price) as total, sum(disbursed_qty) as quantity')
+        ->where('company', '=', $company)
+        ->where('item_id', '=', $id)
+        ->where('disbursement_date', '>=', $from)
+        ->where('disbursement_date', '<=', $to)
+        ->orderBy('disbursement_date','DESC')
+        ->get();
+        
+
+        return $disbursement;
+    }
+
     /**
      * Display the specified resource.
      *
@@ -240,11 +307,43 @@ class DisbursementController extends Controller
      */
     public function show($disbursement_id)
     {
-        $result = Disbursement::with('item:id,item_name')
+     /*   $result = Disbursement::with('item:id,item_name')
         ->with('department:id,dept_name')
         ->groupBy('item_id', 'department_id')
         ->selectRaw('item_id, department_id, sum(disbursed_qty) as quantity')
         ->where('disbursement_id', '=', $disbursement_id)
+        ->orderBy('item_id','DESC')->get(); */
+
+        $result = DB::table('disbursements')
+        ->leftJoin('departments', 'disbursements.department_id', '=', 'departments.id')
+        ->leftJoin('items', 'disbursements.item_id', '=', 'items.id')
+        ->groupBy('disbursements.item_id','department_id','item_name', 'dept_name', 'disbursement_id')
+        ->select('disbursements.item_id','disbursements.department_id','items.item_name', 'departments.dept_name', DB::raw('sum(disbursements.disbursed_qty) as quantity'))
+        ->where('disbursement_id', '=', $disbursement_id)
+        ->orderBy('item_id','DESC')->get(); 
+
+        return $result;
+    }
+
+    public function deptDisbursement($id)
+    {
+        $result = Disbursement::with('item:id,item_name')
+        ->groupBy('item_id', 'department_id', 'disbursement_id', 'disbursement_date')
+        ->selectRaw('item_id, disbursement_date, disbursement_id, sum(disbursed_qty) as quantity')
+        ->where('department_id', '=', $id)
+        ->orderBy('item_id','DESC')->get(); 
+
+        return $result;
+    }
+
+    public function filterDisbursement($id, $from, $to)
+    {
+        $result = Disbursement::with('item:id,item_name')
+        ->groupBy('item_id', 'department_id', 'disbursement_id', 'disbursement_date')
+        ->selectRaw('item_id, disbursement_date, disbursement_id, sum(disbursed_qty) as quantity')
+        ->where('department_id', '=', $id)
+        ->where('disbursement_date', '>=', $from)
+        ->where('disbursement_date', '<=', $to)
         ->orderBy('item_id','DESC')->get(); 
 
         return $result;
@@ -268,9 +367,16 @@ class DisbursementController extends Controller
      * @param  \App\Disbursement  $disbursement
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, Disbursement $disbursement)
+    public function update($disbursement_id, $company, $disbursement_date)
     {
-        //
+        Disbursement::where('disbursement_id', '=', $disbursement_id)->update(['disbursement_date' => $disbursement_date]);
+
+        $result = Disbursement::groupBy('disbursement_id', 'disbursement_date')
+        ->selectRaw('disbursement_id, disbursement_date')
+        ->where('company', '=', $company)
+        ->orderBy('disbursement_date','DESC')->get();
+
+         return $result;
     }
 
     /**
@@ -294,10 +400,11 @@ class DisbursementController extends Controller
             Disbursement::where('id', $item->id)->delete();
         }
 
-        $result = Disbursement::with('item:id,item_name')
-        ->with('department:id,dept_name')
-        ->groupBy('item_id', 'department_id')
-        ->selectRaw('item_id, department_id, sum(disbursed_qty) as quantity')
+        $result = DB::table('disbursements')
+        ->leftJoin('departments', 'disbursements.department_id', '=', 'departments.id')
+        ->leftJoin('items', 'disbursements.item_id', '=', 'items.id')
+        ->groupBy('disbursements.item_id','department_id','item_name', 'dept_name', 'disbursement_id')
+        ->select('disbursements.item_id','disbursements.department_id','items.item_name', 'departments.dept_name', DB::raw('sum(disbursements.disbursed_qty) as quantity'))
         ->where('disbursement_id', '=', $disbursement_id)
         ->orderBy('item_id','DESC')->get(); 
 

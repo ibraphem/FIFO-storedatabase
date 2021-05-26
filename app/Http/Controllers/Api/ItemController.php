@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Item;
 use Illuminate\Http\Request;
+use DB;
 
 class ItemController extends Controller
 {
@@ -17,6 +18,31 @@ class ItemController extends Controller
     {
         $result = Item::orderBy('item_name','ASC')->get();
         return $result;
+    }
+
+    public function test2()
+    {
+      /*  $result = Item::with('purchase')
+      //  ->groupBy('item_id')
+       // ->selectRaw('item_id, sum(purchase_price * remainder) as price, sum(remainder) as quantity')
+      //  ->select('item_id')
+     //   ->where('company', '=', 'Landover')
+       // ->orderBy('item_id','DESC')->get(); 
+       ->get(); */
+
+     $result = Item::query()
+    ->with(array('purchase' => function($query) {
+        $query->select('item_id', DB::raw('sum(purchase_price * remainder) as price'), DB::raw('sum(remainder) as quantity'))
+        ->where('company', '=', 'Landover')
+        ->groupBy('item_id');
+    }))
+    ->with('category')
+  
+    ->get();
+
+        return $result;
+
+    
     }
 
     /**
@@ -39,8 +65,10 @@ class ItemController extends Controller
     {
         $item = new Item();
         $item->item_name = $request->item_name;
+        $item->category_id = $request->category_id;
+        $item->reorder = $request->reorder;
         $item->save();
-        $result = Item::orderBy('id','DESC')->get();
+        $result = Item::orderBy('item_name','ASC')->get();
         return $result;
     }
 
@@ -77,8 +105,10 @@ class ItemController extends Controller
     {
         $item = Item::find($id);
         $item->item_name = $request->item_name;
+        $item->category_id = $request->category_id;
+        $item->reorder = $request->reorder;
         $item->save();
-        $result = Item::orderBy('id','DESC')->get();
+        $result = Item::orderBy('item_name','ASC')->get();
         return $result;
     }
 

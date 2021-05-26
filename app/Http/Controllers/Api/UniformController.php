@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Api; 
+namespace App\Http\Controllers\Api;
 
-use App\Department;
 use App\Http\Controllers\Controller;
+use App\Uniform;
 use Illuminate\Http\Request;
 
-class DepartmentController extends Controller
+class UniformController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -15,7 +15,7 @@ class DepartmentController extends Controller
      */
     public function index()
     {
-        $result = Department::orderBy('id','DESC')->get();
+        $result = Uniform::orderBy('id','DESC')->get();
         return $result;
     }
 
@@ -24,9 +24,10 @@ class DepartmentController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function create()
+    public function create($company)
     {
-        //
+        $result = Uniform::where('company', '=', $company)->get();
+        return $result;
     }
 
     /**
@@ -37,20 +38,21 @@ class DepartmentController extends Controller
      */
     public function store(Request $request)
     {
-        $department = new Department();
-        $department->dept_name = $request->dept_name;
-        $department->save();
-        $result = Department::orderBy('id','DESC')->get();
+        $uniform = new Uniform();
+        $uniform->type = $request->type;
+        $uniform->company = $request->company;
+        $uniform->save();
+        $result = Uniform::orderBy('id','DESC')->get();
         return $result;
     }
 
     /**
      * Display the specified resource.
      *
-     * @param  \App\Department  $department
+     * @param  \App\Uniform  $uniform
      * @return \Illuminate\Http\Response
      */
-    public function show(Department $department)
+    public function show(Uniform $uniform)
     {
         //
     }
@@ -58,10 +60,10 @@ class DepartmentController extends Controller
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Department  $department
+     * @param  \App\Uniform  $uniform
      * @return \Illuminate\Http\Response
      */
-    public function edit(Department $department)
+    public function edit(Uniform $uniform)
     {
         //
     }
@@ -70,25 +72,26 @@ class DepartmentController extends Controller
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Department  $department
+     * @param  \App\Uniform  $uniform
      * @return \Illuminate\Http\Response
      */
     public function update(Request $request, $id)
     {
-        $department = Department::find($id);
-        $department->dept_name = $request->dept_name;
-        $department->save();
-        $result = Department::orderBy('id','DESC')->get();
+        $uniform = Uniform::find($id);
+        $uniform->type = $request->type;
+        $uniform->company = $request->company;
+        $uniform->save();
+        $result = Uniform::orderBy('id','DESC')->get();
         return $result;
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Department  $department
+     * @param  \App\Uniform  $uniform
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Department $department)
+    public function destroy(Uniform $uniform)
     {
         //
     }
